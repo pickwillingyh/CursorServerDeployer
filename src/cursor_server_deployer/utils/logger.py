@@ -2,6 +2,8 @@
 Logger utility for console output
 """
 
+from typing import Optional
+
 from rich.console import Console
 
 

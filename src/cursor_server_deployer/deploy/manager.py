@@ -4,7 +4,7 @@ Deployment manager for Cursor server
 
 import os
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 from rich.console import Console
 

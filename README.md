@@ -12,13 +12,44 @@ A powerful tool for deploying Cursor remote servers to Linux machines.
 - ✅ Silent mode for repeat deployments
 - ✅ Extensible download strategies
 - ✅ Rich console output with progress
+- ✅ Automatic version checking (non-intrusive)
 
 ## Installation
+
+### Using uvx (Recommended)
 
 No installation required! Use `uvx` to run directly:
 
 ```bash
 uvx cursor-server-deployer
+```
+
+### Using pipx
+
+Install to your current environment:
+
+```bash
+pipx install cursor-server-deployer
+```
+
+### Using pip
+
+```bash
+pip install cursor-server-deployer
+```
+
+### Using uv (Development)
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/cursor-server-deployer.git
+cd cursor-server-deployer
+
+# Sync dependencies
+uv sync
+
+# Run the tool
+uv run python -m cursor_server_deployer --help
 ```
 
 ## Usage
@@ -122,11 +153,49 @@ SSH keys are stored in the standard `~/.ssh/` directory:
 - ED25519 keys (modern and secure)
 - Proper file permissions (600/644/700)
 
+## Version Checking
+
+The tool automatically checks for updates in a non-intrusive way:
+- Update checks happen silently in the background
+- You'll only be notified when a new version is available
+- The tool never interrupts your workflow with update prompts
+- You can check for updates manually using: `uvx cursor-server-deployer --check-update`
+
 ## Requirements
 
 - Python 3.10+
 - Cursor installed locally
 - SSH access to remote servers
+
+## Development
+
+### Building and Publishing
+
+Use `poe` (Python Task Executor) for common development tasks:
+
+```bash
+# Install poe
+pip install poethepoet
+
+# Run available tasks
+poe
+
+# Common tasks:
+poe build          # Build the package
+poe publish        # Publish to PyPI
+poe publish-test   # Publish to TestPyPI
+poe version        # Bump version
+poe clean         # Clean build artifacts
+poe test          # Run tests
+```
+
+## Acknowledgments
+
+This project was inspired by and includes information from the following sources:
+
+- [How to download Cursor Remote SSH Server manually](https://forum.cursor.com/t/how-to-download-cursor-remote-ssh-server-manually/30455) - The Cursor Forum community for sharing insights about Cursor remote server setup
+
+Special thanks to the Cursor community members who contributed their knowledge and experiences, making this tool possible.
 
 ## License
 

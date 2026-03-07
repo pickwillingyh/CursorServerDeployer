@@ -1,0 +1,6 @@
+data.sh
+some_data.md
+.claude/
+.idea/
+/src/cursor_server_deployer.egg-info/
+**/__pycache__/**

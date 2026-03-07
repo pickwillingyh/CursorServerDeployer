@@ -26,6 +26,7 @@ dependencies = [
     "rich>=13.7.0",
     "pydantic>=2.5.0",
     "typer>=0.12.0",
+    "packaging>=23.0",
 ]
 
 [project.optional-dependencies]
@@ -35,6 +36,7 @@ dev = [
     "black>=23.12.0",
     "ruff>=0.1.0",
     "mypy>=1.8.0",
+    "poethepoet>=0.24.0",
 ]
 
 [project.scripts]
@@ -46,8 +48,11 @@ Repository = "https://github.com/yourusername/cursor-server-deployer"
 Issues = "https://github.com/yourusername/cursor-server-deployer/issues"
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.ruff]
 line-length = 100
@@ -62,3 +67,16 @@ disallow_untyped_defs = true
 [tool.black]
 line-length = 100
 target-version = ['py310', 'py311', 'py312']
+
+[tool.poe.tasks]
+build = "uv build"
+publish = "uv publish"
+publish-test = "uv publish --publish-url https://test.pypi.org/legacy/"
+version = { cmd = "poetry version $VERSION", help = "Bump version: poe version <VERSION>" }
+clean = "rm -rf dist/ build/ *.egg-info .eggs .pytest_cache .mypy_cache .ruff_cache"
+test = "pytest"
+format = "black src/"
+lint = "ruff check src/"
+typecheck = "mypy src/"
+check-all = ["lint", "typecheck", "test"]
+run = "uv run python -m cursor_server_deployer"

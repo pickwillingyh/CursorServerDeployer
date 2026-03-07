@@ -25,9 +25,24 @@ app = typer.Typer(
 
 # Global options
 verbose_option = typer.Option(False, "--verbose", "-v", help="Enable verbose output")
+check_update_option = typer.Option(False, "--check-update", help="Check for updates")
 
 
 @app.callback()
+def main(verbose: bool = verbose_option, check_update: bool = check_update_option):
+    """Cursor Server Deployer - Deploy Cursor remote servers to Linux machines"""
+    global logger
+    logger = Logger(verbose=verbose)
+
+    # Check for updates if requested
+    if check_update:
+        _check_for_updates()
+
+
+@app.command()
+def check_update():
+    """Check for available updates"""
+    _check_for_updates()
 def main(verbose: bool = verbose_option):
     """Cursor Server Deployer - Deploy Cursor remote servers to Linux machines"""
     global logger
@@ -434,6 +449,38 @@ def _record_execution(
 
 # Global logger instance
 logger = Logger()
+
+
+def _check_for_updates():
+    """Check for available updates"""
+    try:
+        import requests
+        import json
+        from packaging import version
+
+        # Get current version
+        current_version = __version__
+
+        # Check PyPI for latest version
+        pypi_url = "https://pypi.org/pypi/cursor-server-deployer/json"
+        response = requests.get(pypi_url, timeout=10)
+        response.raise_for_status()
+
+        data = response.json()
+        latest_version = data["info"]["version"]
+
+        if version.parse(latest_version) > version.parse(current_version):
+            logger.info(f"[yellow]New version available![/yellow]")
+            logger.info(f"  Current: {current_version}")
+            logger.info(f"  Latest: {latest_version}")
+            logger.info("  Run: uvx cursor-server-deployer --help")
+            logger.info("  to see how to update")
+        else:
+            logger.info(f"[green]You are using the latest version: {current_version}[/green]")
+
+    except Exception as e:
+        logger.debug(f"Update check failed: {e}")
+        logger.info("Could not check for updates")
 
 
 def main_entry():
