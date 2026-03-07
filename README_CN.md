@@ -24,6 +24,30 @@
 uvx cursor-server-deployer
 ```
 
+#### 本地安装与配置 `uvx`
+
+如果你还没有安装 `uv`/`uvx`，请先安装（可参考官方文档 [`https://docs.astral.sh/uv`](https://docs.astral.sh/uv)）：
+
+```bash
+# Linux / macOS
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows（PowerShell）
+powershell -ExecutionPolicy Bypass -Command "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+安装完成后，确认 `uvx` 已经在 `PATH` 中：
+
+```bash
+uvx --version
+```
+
+之后你就可以在任意目录中直接运行本工具，而无需手动创建虚拟环境：
+
+```bash
+uvx cursor-server-deployer --help
+```
+
 ### 使用 pipx
 
 安装到当前环境：

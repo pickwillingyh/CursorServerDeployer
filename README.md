@@ -24,6 +24,54 @@ No installation required! Use `uvx` to run directly:
 uvx cursor-server-deployer
 ```
 
+#### Local setup of `uvx`
+
+If you don't have `uv`/`uvx` yet, install it first (see the official docs at [`https://docs.astral.sh/uv`](https://docs.astral.sh/uv)):
+
+```bash
+# Linux / macOS
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows (PowerShell)
+powershell -ExecutionPolicy Bypass -Command "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+After installation, make sure `uvx` is on your `PATH`:
+
+```bash
+uvx --version
+```
+
+Then you can run this tool from any directory without creating a virtualenv manually:
+
+```bash
+uvx cursor-server-deployer --help
+```
+
+#### Short alias for frequent use
+
+To avoid typing the full command every time, you can define a short alias:
+
+- **Bash/Zsh**:
+
+  ```bash
+  # Put this in your ~/.bashrc or ~/.zshrc
+  alias csd='uvx cursor-server-deployer'
+  ```
+
+- **PowerShell** (Windows):
+
+  ```powershell
+  # Add this to your $PROFILE
+  function csd { uvx cursor-server-deployer @Args }
+  ```
+
+After that you can simply run:
+
+```bash
+csd --host mycloud.com --user root
+```
+
 ### Using pipx
 
 Install to your current environment:

@@ -4,3 +4,4 @@ some_data.md
 .idea/
 /src/cursor_server_deployer.egg-info/
 **/__pycache__/**
+build/

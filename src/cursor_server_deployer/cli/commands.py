@@ -8,7 +8,9 @@ from typing import Optional, List
 import typer
 from rich.console import Console
 from rich.table import Table
+from InquirerPy import inquirer
 
+from cursor_server_deployer import __version__
 from cursor_server_deployer.config import ConfigManager, ServerConfig, ExecutionRecord
 from cursor_server_deployer.version import VersionDetector
 from cursor_server_deployer.download import DownloadManager
@@ -28,8 +30,12 @@ verbose_option = typer.Option(False, "--verbose", "-v", help="Enable verbose out
 check_update_option = typer.Option(False, "--check-update", help="Check for updates")
 
 
-@app.callback()
-def main(verbose: bool = verbose_option, check_update: bool = check_update_option):
+@app.callback(invoke_without_command=True)
+def main(
+    ctx: typer.Context,
+    verbose: bool = verbose_option,
+    check_update: bool = check_update_option,
+):
     """Cursor Server Deployer - Deploy Cursor remote servers to Linux machines"""
     global logger
     logger = Logger(verbose=verbose)
@@ -38,15 +44,16 @@ def main(verbose: bool = verbose_option, check_update: bool = check_update_optio
     if check_update:
         _check_for_updates()
 
+    # If no subcommand was invoked, launch the interactive menu
+    if ctx.invoked_subcommand is None:
+        _interactive_menu()
+        raise typer.Exit(0)
+
 
 @app.command()
 def check_update():
     """Check for available updates"""
     _check_for_updates()
-def main(verbose: bool = verbose_option):
-    """Cursor Server Deployer - Deploy Cursor remote servers to Linux machines"""
-    global logger
-    logger = Logger(verbose=verbose)
 
 
 # Main deploy command
@@ -71,21 +78,25 @@ def deploy(
     if silent:
         last_execution = config.get_last_execution()
         if not last_execution:
-            logger.error("No previous execution found for silent mode")
-            raise typer.Exit(1)
+            # No previous execution: fall back to interactive selection
+            logger.warning("No previous execution found for silent mode, showing server list for selection.")
+            servers_to_deploy = _select_servers_interactive(config)
+            if not servers_to_deploy:
+                logger.warning("No servers selected")
+                raise typer.Exit(0)
+        else:
+            # Use servers from last execution
+            servers_to_deploy = []
+            for sid in last_execution.servers:
+                server = config.get_server(sid)
+                if server:
+                    servers_to_deploy.append(server)
 
-        # Use servers from last execution
-        servers_to_deploy = []
-        for sid in last_execution.servers:
-            server = config.get_server(sid)
-            if server:
-                servers_to_deploy.append(server)
+            if not servers_to_deploy:
+                logger.error("No valid servers found from last execution")
+                raise typer.Exit(1)
 
-        if not servers_to_deploy:
-            logger.error("No valid servers found from last execution")
-            raise typer.Exit(1)
-
-        logger.info(f"Silent mode: Using {len(servers_to_deploy)} server(s) from last execution")
+            logger.info(f"Silent mode: Using {len(servers_to_deploy)} server(s) from last execution")
 
     # Handle server selection
     elif interactive:
@@ -368,34 +379,204 @@ def cache(
 
 
 # Helper functions
+def _interactive_menu():
+    """Top-level interactive menu shown when no command is given."""
+    while True:
+        config = ConfigManager()
+
+        choice = inquirer.select(
+            message="Cursor Server Deployer - Interactive Menu",
+            choices=[
+                {"name": "Deploy to remote servers", "value": "deploy"},
+                {"name": "Add new server", "value": "add"},
+                {"name": "Manage server list", "value": "manage"},
+                {"name": "Setup SSH key authentication", "value": "ssh"},
+                {"name": "View deployment history", "value": "history"},
+                {"name": "Manage download cache", "value": "cache"},
+                {"name": "Exit", "value": "exit"},
+            ],
+            instruction="Use ↑/↓ to move, Enter to confirm",
+        ).execute()
+
+        if choice == "exit":
+            return
+        elif choice == "deploy":
+            # Use the existing interactive server selection + deploy flow
+            deploy(interactive=True)
+        elif choice == "add":
+            # Prompt for basic server information, then call add_server()
+            host = typer.prompt("Remote host (e.g. example.com)")
+            user = typer.prompt("Remote username (e.g. root)")
+            port = typer.prompt("SSH port", type=int, default=22)
+            arch = typer.prompt("Architecture (x64/arm64)", default="x64")
+            name = typer.prompt("Server display name", default="")
+            remote_path = typer.prompt("Remote installation path", default="~/.cursor-server")
+
+            add_server(
+                host=host,
+                user=user,
+                port=port,
+                arch=arch,
+                name=name or None,
+                remote_path=remote_path,
+            )
+        elif choice == "manage":
+            # Simple manage menu: list servers, optionally remove one
+            list_servers()
+            if typer.confirm("Remove a server?", default=False):
+                server_id = typer.prompt("Server ID to remove")
+                remove_server(server_id=server_id)
+        elif choice == "ssh":
+            # List servers then allow selecting one for key setup
+            list_servers()
+            server_id = typer.prompt("Server ID to setup SSH key for")
+            setup_key(server_id=server_id)
+        elif choice == "history":
+            limit = typer.prompt("How many recent executions to show?", type=int, default=10)
+            history(limit=limit)
+        elif choice == "cache":
+            if typer.confirm("Clear download cache?", default=False):
+                older = typer.prompt(
+                    "Only clear files older than N days (0 = all)",
+                    type=int,
+                    default=0,
+                )
+                cache(clear=True, older_than=(older or None))
+            else:
+                cache()
+
+
 def _select_servers_interactive(config: ConfigManager) -> List[ServerConfig]:
-    """Select servers interactively"""
-    servers = config.list_servers()
+    """Select servers interactively (支持单选、多选、新建/全部/上次选择/退出等菜单项)"""
+    while True:
+        servers = config.list_servers()
 
-    if not servers:
-        logger.error("No servers configured. Add a server first.")
-        raise typer.Exit(1)
+        if not servers:
+            logger.info("No servers configured yet. Let's add a new server first.")
+            # Reuse the add_server prompts from the interactive menu
+            host = typer.prompt("Remote host (e.g. example.com)")
+            user = typer.prompt("Remote username (e.g. root)")
+            port = typer.prompt("SSH port", type=int, default=22)
+            arch = typer.prompt("Architecture (x64/arm64)", default="x64")
+            name = typer.prompt("Server display name", default="")
+            remote_path = typer.prompt("Remote installation path", default="~/.cursor-server")
 
-    logger.section("Select server(s) to deploy to")
+            add_server(
+                host=host,
+                user=user,
+                port=port,
+                arch=arch,
+                name=name or None,
+                remote_path=remote_path,
+            )
+            # Loop back and reload servers
+            continue
 
-    for i, server in enumerate(servers, 1):
-        key_status = "[dim](key)[/dim]" if server.key_setup else "[dim](password)[/dim]"
-        logger.info(f"  {i}. {server.name} - {server.connection_string} {key_status}")
+        # Primary menu: 单选当前项 + 特殊操作
+        primary_choices = []
+        for server in servers:
+            key_status = "(key)" if server.key_setup else "(password)"
+            label = f"{server.name} - {server.connection_string} {key_status}"
+            primary_choices.append({"name": label, "value": ("single", server)})
 
-    logger.info(f"  {len(servers) + 1}. All servers")
-    logger.info(f"  0. Cancel")
+        # Extra menu items
+        extra_choices = [
+            {"name": "[+] New server...", "value": ("action", "new")},
+            {"name": "[*] All servers", "value": ("action", "all")},
+        ]
 
-    choice = typer.prompt("Select", type=int)
+        # 如果有上一次执行记录，则增加“直接应用上一次选择”的选项
+        last_execution = config.get_last_execution()
+        if last_execution and last_execution.servers:
+            extra_choices.insert(
+                1,
+                {
+                    "name": "[⟳] Use last selected servers",
+                    "value": ("action", "last"),
+                },
+            )
 
-    if choice == 0:
-        return []
-    elif choice == len(servers) + 1:
-        return servers
-    elif 1 <= choice <= len(servers):
-        return [servers[choice - 1]]
-    else:
-        logger.error("Invalid selection")
-        raise typer.Exit(1)
+        # 进入多选模式的入口，具体空格说明放在下一步的多选界面里
+        extra_choices.extend(
+            [
+                {"name": "Multi-select servers...", "value": ("action", "multi")},
+                {"name": "[x] Quit", "value": ("action", "quit")},
+            ]
+        )
+
+        primary_choices.extend(extra_choices)
+
+        mode, payload = inquirer.select(
+            message="Select server(s) to deploy:",
+            choices=primary_choices,
+            instruction="Use ↑/↓ to move, Enter to confirm",
+        ).execute()
+
+        # Handle primary selection result
+        if mode == "single":
+            # 直接回车，选择当前 server（单选）
+            server = payload
+            return [server]
+
+        action = payload
+        if action == "quit":
+            return []
+        elif action == "all":
+            return list(servers)
+        elif action == "last":
+            # 直接复用上一次部署时使用的服务器列表，但仍然走常规（非 silent）部署流程
+            last_execution = config.get_last_execution()
+            if not last_execution or not last_execution.servers:
+                logger.warning("No previous execution found, please select servers manually.")
+                continue
+
+            selected_servers: List[ServerConfig] = []
+            for sid in last_execution.servers:
+                server = config.get_server(sid)
+                if server:
+                    selected_servers.append(server)
+
+            if not selected_servers:
+                logger.warning("No valid servers found from last execution, please select servers manually.")
+                continue
+
+            return selected_servers
+        elif action == "new":
+            # 新建 server 后回到菜单
+            host = typer.prompt("Remote host (e.g. example.com)")
+            user = typer.prompt("Remote username (e.g. root)")
+            port = typer.prompt("SSH port", type=int, default=22)
+            arch = typer.prompt("Architecture (x64/arm64)", default="x64")
+            name = typer.prompt("Server display name", default="")
+            remote_path = typer.prompt("Remote installation path", default="~/.cursor-server")
+
+            add_server(
+                host=host,
+                user=user,
+                port=port,
+                arch=arch,
+                name=name or None,
+                remote_path=remote_path,
+            )
+            continue
+        elif action == "multi":
+            # 进入多选界面，支持空格选择
+            checkbox_choices = []
+            for server in servers:
+                key_status = "(key)" if server.key_setup else "(password)"
+                label = f"{server.name} - {server.connection_string} {key_status}"
+                checkbox_choices.append({"name": label, "value": server})
+
+            selected = inquirer.checkbox(
+                message="Select server(s) to deploy (multi-select):",
+                choices=checkbox_choices,
+                instruction="Use ↑/↓ to move, Space to select/unselect, Enter to confirm, Esc/Ctrl+C to cancel",
+            ).execute()
+
+            if selected:
+                return list(selected)
+            # If user cancelled or selected nothing, go back to primary menu
+            continue
 
 
 def _deploy_with_prompts(

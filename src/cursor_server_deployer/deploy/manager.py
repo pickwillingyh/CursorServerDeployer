@@ -143,7 +143,7 @@ class DeployManager:
         version_info: CursorVersion
     ) -> bool:
         """
-        Deploy in silent mode (minimal output, no password prompts)
+        Deploy in silent mode (minimal output).
 
         Args:
             servers: List of server configurations
@@ -156,15 +156,18 @@ class DeployManager:
         all_success = True
 
         for server in servers:
-            # In silent mode, only key auth is allowed
-            if server.auth_method == "password":
-                self.console.print(
-                    f"[red]✗[/red] {server.name}: Password auth not supported in silent mode"
-                )
-                all_success = False
-                continue
+            password = None
 
-            if not self.deploy(server, local_file, version_info):
+            if server.auth_method == "password":
+                # 即使在 silent 模式下，也允许通过一次性密码输入完成部署，
+                # 只是打印更少的日志。
+                import getpass
+
+                password = getpass.getpass(
+                    f"[silent] Enter password for {server.connection_string}: "
+                )
+
+            if not self.deploy(server, local_file, version_info, password=password):
                 all_success = False
 
         return all_success
