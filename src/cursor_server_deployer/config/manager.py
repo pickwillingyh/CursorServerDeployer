@@ -148,7 +148,9 @@ class ConfigManager:
         """Mark server as deployed"""
         server = self.get_server(server_id)
         if server:
-            server.last_deployed = ExecutionRecord().timestamp
+            record = ExecutionRecord(action="deploy", success=True, servers=[server_id],
+                                   cursor_version=version, cursor_commit=commit)
+            server.last_deployed = record.timestamp
             server.cursor_version = version
             server.cursor_commit = commit
             self._save_config()

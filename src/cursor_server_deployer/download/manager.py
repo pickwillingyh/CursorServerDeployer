@@ -53,37 +53,67 @@ class DownloadManager:
         Returns:
             Path to downloaded file
         """
+        # Strategy and URL info
         strategy = StrategyFactory().get_strategy(version_info.version)
         url = strategy.get_download_url(version_info, arch, os_type)
         filename = strategy.get_filename(version_info, arch, os_type)
         local_path = self.cache_dir / filename
+        temp_path = self.cache_dir / f"{filename}.downloading"
+
+        # --- Current state output ---
+        self.console.print(f"[bold cyan]Current Download State:[/bold cyan]")
+        self.console.print(f"[dim]Target file: {local_path}[/dim]")
+
+        # Check if cache directory exists
+        cache_exists = self.cache_dir.exists()
+        self.console.print(f"[dim]Cache directory exists: {cache_exists}[/dim]")
+
+        # Check if target file exists
+        target_exists = local_path.exists()
+        self.console.print(f"[dim]Target file exists: {target_exists}[/dim]")
+
+        # Force flag value
+        self.console.print(f"[dim]Force flag: {force}[/dim]")
+
+        # If target file exists, show its size
+        if target_exists:
+            file_size = local_path.stat().st_size
+            self.console.print(f"[dim]File size: {file_size} bytes[/dim]")
+            if file_size == 0:
+                self.console.print("[yellow]Warning: Target file is empty![/yellow]")
+
+        self.console.print(f"[dim]Download URL: {url}[/dim]")
 
         # Check if file already exists
-        if local_path.exists() and not force:
-            self.console.print(
-                f"[green]✓[/green] Using cached file: {local_path}"
-            )
-            return local_path
+        self.console.print(f"[dim]Cache check: Checking if {local_path} exists...[/dim]")
+        self.console.print(f"[dim]Cache directory: {self.cache_dir}[/dim]")
+        self.console.print(f"[dim]Cache directory exists: {self.cache_dir.exists()}[/dim]")
+        self.console.print(f"[dim]Force flag: {force}[/dim]")
 
-        # Download the file
-        self.console.print(
-            f"[yellow]→[/yellow] Downloading Cursor server..."
-        )
-        self.console.print(f"[dim]URL: {url}[/dim]")
-        self.console.print(f"[dim]Destination: {local_path}[/dim]")
+        # First check: if force=True, always download
+        if force:
+            self.console.print("[yellow]→[/yellow] Force download enabled, ignoring cache...")
+            return self._download_file_with_fallback(url, temp_path, local_path)
 
-        try:
-            self._download_file(url, local_path)
-            self.console.print(
-                f"[green]✓[/green] Download complete: {local_path}"
-            )
-            return local_path
-
-        except requests.exceptions.RequestException as e:
-            self.console.print(
-                f"[red]✗[/red] Download failed: {e}"
-            )
-            raise RuntimeError(f"Failed to download Cursor server: {e}")
+        # Second check: if file exists, use cache
+        if local_path.exists():
+            self.console.print(f"[dim]Cache check: File exists, checking size...[/dim]")
+            self.console.print(f"[dim]File size: {local_path.stat().st_size} bytes[/dim]")
+            if local_path.stat().st_size > 0:
+                self.console.print(f"[green]✓[/green] Using cached file: {local_path}")
+                return local_path
+            else:
+                self.console.print(f"[yellow]→[/yellow] Cached file is empty, redownloading...[/dim]")
+                return self._download_file_with_fallback(url, temp_path, local_path)
+        else:
+            self.console.print("[yellow]→[/yellow] No cached file found, downloading...")
+            # List all files in cache directory for debugging
+            if self.cache_dir.exists():
+                files = list(self.cache_dir.glob("*.tar.gz"))
+                self.console.print(f"[dim]Files in cache: {len(files)}[/dim]")
+                for f in files:
+                    self.console.print(f"[dim]  - {f.name} (size: {f.stat().st_size} bytes)[/dim]")
+            return self._download_file_with_fallback(url, temp_path, local_path)
 
     def _download_file(self, url: str, local_path: Path):
         """Download file with progress bar"""
@@ -139,9 +169,55 @@ class DownloadManager:
         filename = strategy.get_filename(version_info, arch, os_type)
         local_path = self.cache_dir / filename
 
+        self.console.print(f"[dim]Cache check: Looking for {filename} in {self.cache_dir}[/dim]")
+        self.console.print(f"[dim]Full path: {local_path}[/dim]")
+        self.console.print(f"[dim]Cache directory exists: {self.cache_dir.exists()}[/dim]")
+        self.console.print(f"[dim]Cache file exists: {local_path.exists()}[/dim]")
+
         if local_path.exists():
+            self.console.print(f"[dim]Cache check: Found cached file: {local_path}[/dim]")
             return local_path
-        return None
+        else:
+            self.console.print(f"[dim]Cache check: No cached file found: {local_path}[/dim]")
+            return None
+
+    def _download_file_with_fallback(self, url: str, temp_path: Path, local_path: Path) -> Path:
+        """Download file with fallback handling"""
+        # Download to temporary file
+        self.console.print(
+            f"[yellow]→[/yellow] Downloading Cursor server..."
+        )
+        self.console.print(f"[dim]URL: {url}[/dim]")
+        self.console.print(f"[dim]Temporary destination: {temp_path}[/dim]")
+
+        try:
+            self._download_file(url, temp_path)
+
+            # Rename temporary file to final name
+            try:
+                temp_path.rename(local_path)
+            except Exception as e:
+                # If rename fails because file already exists, clean up temp file and return existing file
+                if "already exists" in str(e) and local_path.exists():
+                    if temp_path.exists():
+                        temp_path.unlink()
+                    self.console.print(f"[green]✓[/green] Using existing file: {local_path}")
+                    return local_path
+                raise e
+
+            self.console.print(
+                f"[green]✓[/green] Download complete: {local_path}"
+            )
+            return local_path
+
+        except requests.exceptions.RequestException as e:
+            self.console.print(
+                f"[red]✗[/red] Download failed: {e}"
+            )
+            # Clean up temporary file if it exists
+            if temp_path.exists():
+                temp_path.unlink()
+            raise RuntimeError(f"Failed to download Cursor server: {e}")
 
     def clear_cache(self, older_than_days: Optional[int] = None):
         """

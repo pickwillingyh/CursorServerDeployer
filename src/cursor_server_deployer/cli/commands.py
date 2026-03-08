@@ -156,14 +156,27 @@ def deploy(
         local_file = None
 
         if not force_download:
+            logger.debug("Checking cache for each server architecture:")
             for server in servers_to_deploy:
-                cached = downloader.get_cached_file(version_info, server.arch)
+                arch = server.arch
+                cached = downloader.get_cached_file(version_info, arch)
                 if cached:
                     local_file = cached
-                    logger.info(f"Using cached file for {server.arch}")
+                    logger.info(f"Using cached file for {arch}: {cached.name}")
+                    logger.debug(f"Cache found at: {cached}")
+                    logger.debug(f"Cache directory: {cached.parent}")
+                    logger.debug(f"Cache file exists: {cached.exists()}")
+                    download_needed = False  # 重置为 False
                     break
+                else:
+                    logger.debug(f"No cached file found for {arch}")
 
-        if download_needed or not local_file:
+            if not local_file:
+                logger.debug("No cached file found for any architecture, will download")
+                logger.debug(f"Cache directory: {downloader.cache_dir}")
+                logger.debug(f"Cache directory exists: {downloader.cache_dir.exists()}")
+
+        if download_needed:
             # Use first server's architecture (or x64 as default)
             target_arch = servers_to_deploy[0].arch
             local_file = downloader.download(version_info, target_arch, force=force_download)
@@ -402,7 +415,8 @@ def _interactive_menu():
             return
         elif choice == "deploy":
             # Use the existing interactive server selection + deploy flow
-            deploy(interactive=True)
+            # Reset force_download to False for interactive mode
+            deploy(interactive=True, force_download=False, silent=False, host=None, user=None, port=22, arch="x64", server_id=None, servers=None)
         elif choice == "add":
             # Prompt for basic server information, then call add_server()
             host = typer.prompt("Remote host (e.g. example.com)")

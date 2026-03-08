@@ -7,7 +7,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
-
+from loguru import logger
 
 @dataclass
 class CursorVersion:
@@ -30,24 +30,41 @@ class VersionDetector:
 
     def _find_cursor_executable(self) -> Optional[Path]:
         """Find Cursor executable on the system"""
+        import sys
+        import os
+        import subprocess
+
+        logger.info("Searching for Cursor executable...")
+
         # Try 'cursor --version' first (if in PATH)
         try:
+            logger.debug("Trying to run 'cursor --version' from PATH")
             result = subprocess.run(
                 ["cursor", "--version"],
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=5,
+                shell=True
             )
             if result.returncode == 0:
+                logger.info("✓ Found cursor in PATH")
                 return Path("cursor")  # Use system command
-        except (FileNotFoundError, subprocess.TimeoutExpired):
+            else:
+                logger.debug(f"Cursor command returned non-zero exit code: {result.returncode}")
+        except (FileNotFoundError, subprocess.TimeoutExpired) as e:
+            logger.debug(f"Cursor not found in PATH: {e}")
             pass
 
         # Check common installation paths
+        logger.info("Checking common installation paths...")
         common_paths = []
-
         if sys.platform == "win32":
+            # Windows: Check multiple possible locations including the correct bin paths
             common_paths = [
+                Path("C:/Program Files/cursor/resources/app/bin/cursor"),
+                Path("C:/Program Files/cursor/resources/app/bin/cursor.cmd"),
+                Path("C:/Program Files (x86)/cursor/resources/app/bin/cursor"),
+                Path("C:/Program Files (x86)/cursor/resources/app/bin/cursor.cmd"),
                 Path("C:/Program Files/cursor/Cursor.exe"),
                 Path("C:/Program Files (x86)/cursor/Cursor.exe"),
             ]
@@ -61,10 +78,28 @@ class VersionDetector:
                 Path("/usr/local/bin/cursor"),
             ]
 
+        # Check each path and log the result
         for path in common_paths:
             if path.exists():
+                logger.info(f"✓ Found cursor at: {path}")
                 return path
+            else:
+                logger.debug(f"✗ Cursor not found at: {path}")
 
+        # If still not found, try to find in PATH manually
+        if sys.platform == "win32":
+            logger.info("Searching PATH environment variable...")
+            path_env = os.environ.get('PATH', '')
+            path_dirs = path_env.split(';')
+            for dir_path in path_dirs:
+                cursor_path = Path(dir_path) / "cursor.exe"
+                if cursor_path.exists():
+                    logger.info(f"✓ Found cursor in PATH: {cursor_path}")
+                    return cursor_path
+                else:
+                    logger.debug(f"✗ Cursor not found in PATH directory: {dir_path}")
+
+        logger.error("✗ Cursor executable not found in any common locations")
         return None
 
     def get_version_info(self) -> CursorVersion:
@@ -85,6 +120,7 @@ class VersionDetector:
         """
         # 1) 优先尝试调用 `cursor --version`（跨平台一致）
         try:
+            print('----')
             # Use cursor --version command
             if self.cursor_path == Path("cursor"):
                 # Use system command
@@ -93,25 +129,46 @@ class VersionDetector:
                     capture_output=True,
                     text=True,
                     timeout=10,
+                    shell=True,
                 )
+                import sys
                 # 在 Windows 上尽量避免弹出额外窗口
                 if sys.platform == "win32":
                     kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
                     # 对于 Electron 应用，避免 GUI 弹出只能尽量控制窗口标志，
                     # 如果用户仍然看到窗口，可以通过环境变量强制禁用 CLI 调用。
+                    import os
                     if os.environ.get("CURSOR_SERVER_DEPLOYER_NO_CURSOR_CLI") == "1":
                         raise RuntimeError("Cursor CLI invocation disabled by environment variable")
+                logger.debug(f"Running system cursor command: {' '.join(kwargs['args'])}")
                 result = subprocess.run(**kwargs)
             else:
-                # Use full path
-                kwargs = dict(
-                    args=[str(self.cursor_path), "--version"],
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                )
-                if sys.platform == "win32":
+                # Use full path - handle .cmd files on Windows
+                import sys
+                cursor_path_str = str(self.cursor_path)
+                logger.debug(f"Running cursor from path: {cursor_path_str}")
+
+                if sys.platform == "win32" and cursor_path_str.lower().endswith(".cmd"):
+                    # For .cmd files on Windows, use cmd.exe to execute
+                    logger.debug("Using cmd.exe to run .cmd file")
+                    kwargs = dict(
+                        args=["cmd.exe", "/c", cursor_path_str, "--version"],
+                        capture_output=True,
+                        text=True,
+                        timeout=10,
+                    )
                     kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+                else:
+                    # Use direct execution for other files
+                    logger.debug("Using direct execution")
+                    kwargs = dict(
+                        args=[cursor_path_str, "--version"],
+                        capture_output=True,
+                        text=True,
+                        timeout=10,
+                    )
+                    if sys.platform == "win32":
+                        kwargs["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
                 result = subprocess.run(**kwargs)
 
             if result.returncode != 0:
@@ -130,6 +187,12 @@ class VersionDetector:
         except Exception as e:
             # 失败时保留原始错误信息，方便在上层输出
             last_error = str(e)
+            # 在 verbose 模式下输出详细的错误信息
+            import sys
+            if "--verbose" in sys.argv or "-v" in sys.argv:
+                import traceback
+                error_details = traceback.format_exc()
+                raise RuntimeError(f"Cursor --version command failed: {e}\n{error_details}")
             # Ignore here and fall back to product.json
             pass
 
