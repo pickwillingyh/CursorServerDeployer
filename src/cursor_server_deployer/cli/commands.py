@@ -605,16 +605,20 @@ def _select_servers_interactive(config: ConfigManager) -> List[ServerConfig]:
                 label = f"{server.name} - {server.connection_string} {key_status}"
                 checkbox_choices.append({"name": label, "value": server})
 
-            selected = inquirer.checkbox(
-                message="Select server(s) to deploy (multi-select):",
-                choices=checkbox_choices,
-                instruction="Use ↑/↓ to move, Space to select/unselect, Enter to confirm, Esc/Ctrl+C to cancel",
-            ).execute()
+            try:
+                selected = inquirer.checkbox(
+                    message="Select server(s) to deploy (multi-select):",
+                    choices=checkbox_choices,
+                    instruction="Use ↑/↓ to move, Space to select/unselect, Enter to confirm, Esc/Ctrl+C to cancel",
+                ).execute()
 
-            if selected:
-                return list(selected)
-            # If user cancelled or selected nothing, go back to primary menu
-            continue
+                if selected:
+                    return list(selected)
+                # If user cancelled or selected nothing, go back to primary menu
+                continue
+            except (KeyboardInterrupt, EOFError):
+                # User pressed Ctrl+C or Esc
+                continue
 
 
 def _deploy_with_prompts(

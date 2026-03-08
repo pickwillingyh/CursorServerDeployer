@@ -4,10 +4,11 @@ Download manager for Cursor server
 
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 from urllib.parse import urlparse
 
 import requests
+import typer
 from rich.console import Console
 from rich.progress import (
     Progress,
@@ -332,7 +333,7 @@ class DownloadManager:
                 temp_path.unlink()
             return None
 
-    def clear_cache(self, older_than_days: Optional[int] = None):
+    def clear_cache(self, older_than_days: Optional[Union[int, typer.models.OptionInfo]] = None):
         """
         Clear cache
 
@@ -342,17 +343,25 @@ class DownloadManager:
         """
         import time
 
-        if older_than_days is None:
+        # Handle OptionInfo object from typer
+        if hasattr(older_than_days, 'default'):
+            # This is an OptionInfo object, use its default value
+            days = older_than_days.default
+        else:
+            # This is the actual value
+            days = older_than_days
+
+        if days is None:
             # Clear all files
             for file in self.cache_dir.glob("*.tar.gz"):
                 file.unlink()
             if self.console:
                 self.console.print(
-                    f"[green]✓[/green] Cache cleared ({self.cache_dir})"
+                    f"[green]OK[/green] Cache cleared ({self.cache_dir})"
                 )
         else:
             # Clear old files
-            cutoff_time = time.time() - (older_than_days * 86400)
+            cutoff_time = time.time() - (days * 86400)
             cleared_count = 0
             for file in self.cache_dir.glob("*.tar.gz"):
                 if file.stat().st_mtime < cutoff_time:
@@ -361,5 +370,5 @@ class DownloadManager:
 
             if self.console:
                 self.console.print(
-                    f"[green]✓[/green] Cleared {cleared_count} old cache files"
+                    f"[green]OK[/green] Cleared {cleared_count} old cache files"
                 )
