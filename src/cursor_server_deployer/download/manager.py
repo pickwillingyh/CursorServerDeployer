@@ -39,8 +39,9 @@ class DownloadManager:
         version_info: CursorVersion,
         arch: str = "x64",
         os_type: str = "linux",
-        force: bool = False
-    ) -> Path:
+        force: bool = False,
+        package_type: str = "server"
+    ) -> Optional[Path]:
         """
         Download Cursor server for given version and architecture
 
@@ -49,80 +50,115 @@ class DownloadManager:
             arch: Target architecture (x64 or arm64)
             os_type: Target OS (usually linux)
             force: Force re-download even if file exists
+            package_type: Type of package to download ('server' or 'cli')
 
         Returns:
             Path to downloaded file
         """
         # Strategy and URL info
         strategy = StrategyFactory().get_strategy(version_info.version)
-        url = strategy.get_download_url(version_info, arch, os_type)
-        filename = strategy.get_filename(version_info, arch, os_type)
+
+        # Determine package URL and filename based on package type
+        if package_type == "cli":
+            url = strategy.get_cli_download_url(version_info, arch, os_type)
+            filename = strategy.get_cli_filename(version_info, arch, os_type)
+        else:
+            url = strategy.get_download_url(version_info, arch, os_type)
+            filename = strategy.get_filename(version_info, arch, os_type)
+
         local_path = self.cache_dir / filename
         temp_path = self.cache_dir / f"{filename}.downloading"
 
         # --- Current state output ---
-        self.console.print(f"[bold cyan]Current Download State:[/bold cyan]")
-        self.console.print(f"[dim]Target file: {local_path}[/dim]")
+        if self.console:
+            self.console.print(f"[bold cyan]Current Download State:[/bold cyan]")
+            self.console.print(f"[dim]Target file: {local_path}[/dim]")
 
-        # Check if cache directory exists
-        cache_exists = self.cache_dir.exists()
-        self.console.print(f"[dim]Cache directory exists: {cache_exists}[/dim]")
+            # Check if cache directory exists
+            cache_exists = self.cache_dir.exists()
+            self.console.print(f"[dim]Cache directory exists: {cache_exists}[/dim]")
 
         # Check if target file exists
         target_exists = local_path.exists()
-        self.console.print(f"[dim]Target file exists: {target_exists}[/dim]")
+        if self.console:
+            self.console.print(f"[dim]Target file exists: {target_exists}[/dim]")
 
         # Force flag value
-        self.console.print(f"[dim]Force flag: {force}[/dim]")
+        if self.console:
+            self.console.print(f"[dim]Force flag: {force}[/dim]")
 
         # If target file exists, show its size
         if target_exists:
             file_size = local_path.stat().st_size
-            self.console.print(f"[dim]File size: {file_size} bytes[/dim]")
+            if self.console:
+                self.console.print(f"[dim]File size: {file_size} bytes[/dim]")
             if file_size == 0:
-                self.console.print("[yellow]Warning: Target file is empty![/yellow]")
+                if self.console:
+                    self.console.print("[yellow]Warning: Target file is empty![/yellow]")
 
-        self.console.print(f"[dim]Download URL: {url}[/dim]")
+        if self.console:
+            self.console.print(f"[dim]Download URL: {url}[/dim]")
 
         # Check if file already exists
-        self.console.print(f"[dim]Cache check: Checking if {local_path} exists...[/dim]")
-        self.console.print(f"[dim]Cache directory: {self.cache_dir}[/dim]")
-        self.console.print(f"[dim]Cache directory exists: {self.cache_dir.exists()}[/dim]")
-        self.console.print(f"[dim]Force flag: {force}[/dim]")
+        if self.console:
+            self.console.print(f"[dim]Cache check: Checking if {local_path} exists...[/dim]")
+        if self.console:
+            self.console.print(f"[dim]Cache directory: {self.cache_dir}[/dim]")
+        if self.console:
+            self.console.print(f"[dim]Cache directory exists: {self.cache_dir.exists()}[/dim]")
+        if self.console:
+            self.console.print(f"[dim]Force flag: {force}[/dim]")
 
         # First check: if force=True, always download
         if force:
-            self.console.print("[yellow]→[/yellow] Force download enabled, ignoring cache...")
-            return self._download_file_with_fallback(url, temp_path, local_path)
+            if self.console:
+                self.console.print("[yellow]→[/yellow] Force download enabled, ignoring cache...")
+            return self._download_file_with_fallback(url, temp_path, local_path, package_type, version_info)
 
         # Second check: if file exists, use cache
         if local_path.exists():
-            self.console.print(f"[dim]Cache check: File exists, checking size...[/dim]")
-            self.console.print(f"[dim]File size: {local_path.stat().st_size} bytes[/dim]")
+            if self.console:
+                self.console.print(f"[dim]Cache check: File exists, checking size...[/dim]")
+            if self.console:
+                self.console.print(f"[dim]File size: {local_path.stat().st_size} bytes[/dim]")
             if local_path.stat().st_size > 0:
-                self.console.print(f"[green]✓[/green] Using cached file: {local_path}")
+                if self.console:
+                    self.console.print(f"[green]✓[/green] Using cached file: {local_path}")
                 return local_path
             else:
-                self.console.print(f"[yellow]→[/yellow] Cached file is empty, redownloading...[/dim]")
-                return self._download_file_with_fallback(url, temp_path, local_path)
+                if self.console:
+                    self.console.print(f"[yellow]→[/yellow] Cached file is empty, redownloading...[/dim]")
+                return self._download_file_with_fallback(url, temp_path, local_path, package_type, version_info)
         else:
-            self.console.print("[yellow]→[/yellow] No cached file found, downloading...")
+            if self.console:
+                self.console.print("[yellow]→[/yellow] No cached file found, downloading...")
             # List all files in cache directory for debugging
             if self.cache_dir.exists():
                 files = list(self.cache_dir.glob("*.tar.gz"))
-                self.console.print(f"[dim]Files in cache: {len(files)}[/dim]")
+                if self.console:
+                    self.console.print(f"[dim]Files in cache: {len(files)}[/dim]")
                 for f in files:
-                    self.console.print(f"[dim]  - {f.name} (size: {f.stat().st_size} bytes)[/dim]")
-            return self._download_file_with_fallback(url, temp_path, local_path)
+                    if self.console:
+                        self.console.print(f"[dim]  - {f.name} (size: {f.stat().st_size} bytes)[/dim]")
+            return self._download_file_with_fallback(url, temp_path, local_path, package_type, version_info)
 
-    def _download_file(self, url: str, local_path: Path):
+    def _download_file(self, url: str, local_path: Path, version_info: Optional[CursorVersion] = None, package_type: str = "server"):
         """Download file with progress bar"""
         # Parse URL for filename (fallback)
         parsed_url = urlparse(url)
         filename = os.path.basename(parsed_url.path) or "cursor-server.tar.gz"
 
-        # Start download
-        response = requests.get(url, stream=True, timeout=30)
+        # Start download with proper User-Agent
+        if version_info:
+            headers = {
+                "User-Agent": f"Cursor/{version_info.version} (Windows; Remote-SSH)"
+            }
+        else:
+            # Fallback User-Agent if version_info is not available
+            headers = {
+                "User-Agent": "Cursor/0.0.0 (Windows; Remote-SSH)"
+            }
+        response = requests.get(url, stream=True, timeout=30, headers=headers)
         response.raise_for_status()
 
         total_size = int(response.headers.get('content-length', 0))
@@ -136,8 +172,9 @@ class DownloadManager:
             console=self.console
         ) as progress:
 
+            package_name = "CLI" if package_type == "cli" else "Server"
             task = progress.add_task(
-                f"[cyan]Downloading {filename}[/cyan]",
+                f"[cyan]Downloading Cursor {package_name}[/cyan]",
                 total=total_size
             )
 
@@ -152,7 +189,8 @@ class DownloadManager:
         self,
         version_info: CursorVersion,
         arch: str = "x64",
-        os_type: str = "linux"
+        os_type: str = "linux",
+        package_type: str = "server"
     ) -> Optional[Path]:
         """
         Get cached file if exists
@@ -161,37 +199,109 @@ class DownloadManager:
             version_info: Cursor version information
             arch: Target architecture
             os_type: Target OS
+            package_type: Type of package to get ('server' or 'cli')
 
         Returns:
             Path to cached file or None
         """
         strategy = StrategyFactory().get_strategy(version_info.version)
-        filename = strategy.get_filename(version_info, arch, os_type)
+
+        if package_type == "cli":
+            filename = strategy.get_cli_filename(version_info, arch, os_type)
+        else:
+            filename = strategy.get_filename(version_info, arch, os_type)
+
         local_path = self.cache_dir / filename
 
-        self.console.print(f"[dim]Cache check: Looking for {filename} in {self.cache_dir}[/dim]")
-        self.console.print(f"[dim]Full path: {local_path}[/dim]")
-        self.console.print(f"[dim]Cache directory exists: {self.cache_dir.exists()}[/dim]")
-        self.console.print(f"[dim]Cache file exists: {local_path.exists()}[/dim]")
+        if self.console:
+            self.console.print(f"[dim]Cache check: Looking for {filename} in {self.cache_dir}[/dim]")
+        if self.console:
+            self.console.print(f"[dim]Full path: {local_path}[/dim]")
+        if self.console:
+            self.console.print(f"[dim]Cache directory exists: {self.cache_dir.exists()}[/dim]")
+        if self.console:
+            self.console.print(f"[dim]Cache file exists: {local_path.exists()}[/dim]")
 
         if local_path.exists():
-            self.console.print(f"[dim]Cache check: Found cached file: {local_path}[/dim]")
+            if self.console:
+                self.console.print(f"[dim]Cache check: Found cached file: {local_path}[/dim]")
             return local_path
         else:
-            self.console.print(f"[dim]Cache check: No cached file found: {local_path}[/dim]")
+            if self.console:
+                self.console.print(f"[dim]Cache check: No cached file found: {local_path}[/dim]")
             return None
 
-    def _download_file_with_fallback(self, url: str, temp_path: Path, local_path: Path) -> Path:
+    def download_cli_package(
+        self,
+        version_info: CursorVersion,
+        arch: str = "x64",
+        force: bool = False
+    ) -> Optional[Path]:
+        """
+        Download CLI package for given version
+
+        Args:
+            version_info: Cursor version information
+            arch: Target architecture (x64 or arm64)
+            force: Force re-download even if file exists
+
+        Returns:
+            Path to downloaded CLI package or None if download failed
+        """
+        try:
+            # Strategy and URL info
+            strategy = StrategyFactory().get_strategy(version_info.version)
+            url = strategy.get_cli_download_url(version_info, arch, "linux")
+            filename = strategy.get_cli_filename(version_info, arch, "linux")
+            local_path = self.cache_dir / filename
+            temp_path = self.cache_dir / f"{filename}.downloading"
+
+            # Check if file already exists
+            if force:
+                if self.console:
+                    self.console.print("[yellow]→[/yellow] Force download enabled, ignoring cache...")
+                return self._download_file_with_fallback(url, temp_path, local_path, "cli", version_info)
+
+            if local_path.exists():
+                if local_path.stat().st_size > 0:
+                    if self.console:
+                        self.console.print(f"[green]✓[/green] Using cached CLI package: {local_path}")
+                    return local_path
+                else:
+                    if self.console:
+                        self.console.print(f"[yellow]→[/yellow] Cached CLI package is empty, redownloading...")
+                    return self._download_file_with_fallback(url, temp_path, local_path, "cli", version_info)
+            else:
+                if self.console:
+                    self.console.print("[yellow]→[/yellow] No cached CLI package found, downloading...")
+                return self._download_file_with_fallback(url, temp_path, local_path, "cli", version_info)
+        except Exception as e:
+            if self.console:
+                self.console.print(f"[yellow]⚠[/yellow] CLI package download failed: {e}")
+            if self.console:
+                self.console.print("[dim]Continuing with server package only...[/dim]")
+            return None
+
+    def _download_file_with_fallback(self, url: str, temp_path: Path, local_path: Path, package_type: str = "server", version_info: Optional[CursorVersion] = None) -> Optional[Path]:
         """Download file with fallback handling"""
         # Download to temporary file
-        self.console.print(
-            f"[yellow]→[/yellow] Downloading Cursor server..."
-        )
-        self.console.print(f"[dim]URL: {url}[/dim]")
-        self.console.print(f"[dim]Temporary destination: {temp_path}[/dim]")
+        if package_type == "cli":
+            if self.console:
+                self.console.print(
+                    f"[yellow]→[/yellow] Downloading Cursor CLI package..."
+                )
+        else:
+            if self.console:
+                self.console.print(
+                    f"[yellow]→[/yellow] Downloading Cursor server..."
+                )
+        if self.console:
+            self.console.print(f"[dim]URL: {url}[/dim]")
+        if self.console:
+            self.console.print(f"[dim]Temporary destination: {temp_path}[/dim]")
 
         try:
-            self._download_file(url, temp_path)
+            self._download_file(url, temp_path, version_info, package_type)
 
             # Rename temporary file to final name
             try:
@@ -201,23 +311,26 @@ class DownloadManager:
                 if "already exists" in str(e) and local_path.exists():
                     if temp_path.exists():
                         temp_path.unlink()
-                    self.console.print(f"[green]✓[/green] Using existing file: {local_path}")
+                    if self.console:
+                        self.console.print(f"[green]✓[/green] Using existing file: {local_path}")
                     return local_path
                 raise e
 
-            self.console.print(
-                f"[green]✓[/green] Download complete: {local_path}"
-            )
+            if self.console:
+                self.console.print(
+                    f"[green]✓[/green] Download complete: {local_path}"
+                )
             return local_path
 
         except requests.exceptions.RequestException as e:
-            self.console.print(
-                f"[red]✗[/red] Download failed: {e}"
-            )
+            if self.console:
+                self.console.print(
+                    f"[yellow]⚠[/yellow] Download failed: {e}"
+                )
             # Clean up temporary file if it exists
             if temp_path.exists():
                 temp_path.unlink()
-            raise RuntimeError(f"Failed to download Cursor server: {e}")
+            return None
 
     def clear_cache(self, older_than_days: Optional[int] = None):
         """
@@ -233,9 +346,10 @@ class DownloadManager:
             # Clear all files
             for file in self.cache_dir.glob("*.tar.gz"):
                 file.unlink()
-            self.console.print(
-                f"[green]✓[/green] Cache cleared ({self.cache_dir})"
-            )
+            if self.console:
+                self.console.print(
+                    f"[green]✓[/green] Cache cleared ({self.cache_dir})"
+                )
         else:
             # Clear old files
             cutoff_time = time.time() - (older_than_days * 86400)
@@ -245,6 +359,7 @@ class DownloadManager:
                     file.unlink()
                     cleared_count += 1
 
-            self.console.print(
-                f"[green]✓[/green] Cleared {cleared_count} old cache files"
-            )
+            if self.console:
+                self.console.print(
+                    f"[green]✓[/green] Cleared {cleared_count} old cache files"
+                )

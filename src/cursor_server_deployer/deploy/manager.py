@@ -23,8 +23,9 @@ class DeployManager:
     def deploy(
         self,
         server: ServerConfig,
-        local_file: Path,
-        version_info: CursorVersion,
+        local_server_file: Path,
+        local_cli_file: Optional[Path] = None,
+        version_info: Optional[CursorVersion] = None,
         password: str = None
     ) -> bool:
         """
@@ -32,7 +33,8 @@ class DeployManager:
 
         Args:
             server: Server configuration
-            local_file: Path to local tar.gz file
+            local_server_file: Path to local server tar.gz file
+            local_cli_file: Path to local CLI tar.gz file (optional)
             version_info: Cursor version information
             password: Password (if using password authentication)
 
@@ -42,48 +44,81 @@ class DeployManager:
         try:
             self.console.print(f"\n[cyan]Deploying to {server.name}...[/cyan]")
 
-            # Get connection
-            if server.auth_method == "key":
-                client = self.connection_pool.get_connection(server)
-            else:
-                if not password:
-                    raise RuntimeError("Password required for password authentication")
-                client = self._connect_with_password(server, password)
+            # Check if we have server package to deploy
+            if local_server_file:
+                # Get connection
+                if server.auth_method == "key":
+                    client = self.connection_pool.get_connection(server)
+                else:
+                    if not password:
+                        raise RuntimeError("Password required for password authentication")
+                    client = self._connect_with_password(server, password)
 
-            # 1. Create remote directory structure
-            remote_base_path = server.remote_path
-            remote_server_path = f"{remote_base_path}/cli/servers/Stable-{version_info.commit}/server/"
+                # 1. Create remote directory structure
+                remote_base_path = server.remote_path
+                if version_info:
+                    remote_server_path = f"{remote_base_path}/cli/servers/Stable-{version_info.commit}/server/"
+                else:
+                    remote_server_path = f"{remote_base_path}/cli/servers/default/"
 
-            self.console.print("[yellow]→[/yellow] Creating remote directory structure...")
-            client.exec_command(f'mkdir -p "{remote_server_path}"')
+                self.console.print("[yellow]→[/yellow] Creating remote directory structure...")
+                client.exec_command(f'mkdir -p "{remote_server_path}"')
 
-            # 2. Upload file
-            remote_tar_path = f"{remote_base_path}/cursor-server.tar.gz"
-            self.console.print(f"[yellow]→[/yellow] Uploading to {remote_tar_path}...")
+                # 2. Upload server file
+                remote_tar_path = f"{remote_base_path}/cursor-server.tar.gz"
+                self.console.print(f"[yellow]→[/yellow] Uploading server package to {remote_tar_path}...")
 
-            sftp = client.open_sftp()
-            sftp.put(str(local_file), remote_tar_path)
-            sftp.close()
+                sftp = client.open_sftp()
+                sftp.put(str(local_server_file), remote_tar_path)
+                sftp.close()
 
-            # 3. Extract file
-            self.console.print("[yellow]→[/yellow] Extracting files...")
-            stdin, stdout, stderr = client.exec_command(
-                f'tar -xzf "{remote_tar_path}" -C "{remote_server_path}" --strip-components=1'
-            )
+                # 3. Extract server file
+                self.console.print("[yellow]→[/yellow] Extracting server files...")
+                stdin, stdout, stderr = client.exec_command(
+                    f'tar -xzf "{remote_tar_path}" -C "{remote_server_path}" --strip-components=1'
+                )
 
             # Check for errors
             error = stderr.read().decode()
             if error:
-                raise RuntimeError(f"Extraction failed: {error}")
+                raise RuntimeError(f"Server extraction failed: {error}")
 
-            # 4. Cleanup temporary file
-            self.console.print("[yellow]→[/yellow] Cleaning up...")
+            # 4. Cleanup server temporary file
+            self.console.print("[yellow]→[/yellow] Cleaning up server package...")
             client.exec_command(f'rm "{remote_tar_path}"')
 
-            self.console.print(
-                f"[green]✓[/green] Successfully deployed to {server.name}"
-            )
-            self.console.print(f"[dim]  Remote path: {remote_server_path}[/dim]")
+            # 5. Upload CLI file if provided
+            if local_cli_file:
+                remote_cli_tar_path = f"{remote_base_path}/cursor-cli.tar.gz"
+                self.console.print(f"[yellow]→[/yellow] Uploading CLI package to {remote_cli_tar_path}...")
+
+                sftp = client.open_sftp()
+                sftp.put(str(local_cli_file), remote_cli_tar_path)
+                sftp.close()
+
+                # 6. Extract CLI file
+                self.console.print("[yellow]→[/yellow] Extracting CLI files...")
+                stdin, stdout, stderr = client.exec_command(
+                    f'tar -xzf "{remote_cli_tar_path}" -C "{remote_base_path}/cli/" --strip-components=1'
+                )
+
+                # Check for errors
+                error = stderr.read().decode()
+                if error:
+                    raise RuntimeError(f"CLI extraction failed: {error}")
+
+                # 7. Cleanup CLI temporary file
+                self.console.print("[yellow]→[/yellow] Cleaning up CLI package...")
+                client.exec_command(f'rm "{remote_cli_tar_path}"')
+
+            # Report what was deployed
+            self.console.print(f"[green]✓[/green] Successfully deployed to {server.name}")
+            if local_server_file and local_cli_file:
+                self.console.print(f"[dim]  Deployed: Server package + CLI package[/dim]")
+            elif local_server_file:
+                self.console.print(f"[dim]  Deployed: Server package only[/dim]")
+            else:
+                self.console.print(f"[dim]  Deployed: CLI package only[/dim]")
 
             return True
 
@@ -139,15 +174,17 @@ class DeployManager:
     def deploy_silent(
         self,
         servers: List[ServerConfig],
-        local_file: Path,
-        version_info: CursorVersion
+        local_server_file: Path,
+        local_cli_file: Optional[Path] = None,
+        version_info: Optional[CursorVersion] = None
     ) -> bool:
         """
         Deploy in silent mode (minimal output).
 
         Args:
             servers: List of server configurations
-            local_file: Path to local tar.gz file
+            local_server_file: Path to local server tar.gz file
+            local_cli_file: Path to local CLI tar.gz file (optional)
             version_info: Cursor version information
 
         Returns:
@@ -167,7 +204,7 @@ class DeployManager:
                     f"[silent] Enter password for {server.connection_string}: "
                 )
 
-            if not self.deploy(server, local_file, version_info, password=password):
+            if not self.deploy(server, local_server_file, local_cli_file, version_info, password=password):
                 all_success = False
 
         return all_success

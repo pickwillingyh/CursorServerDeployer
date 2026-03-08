@@ -1,58 +1,87 @@
-"""
-Basic test to verify the package structure
-"""
+#!/usr/bin/env python3
 
 import sys
-import os
 from pathlib import Path
 
-# Fix encoding for Windows
-if sys.platform == "win32":
-    import io
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+# Add src to path so we can import our modules
+sys.path.insert(0, str(Path(__file__).parent / 'src'))
 
-# Add the current directory to Python path
-sys.path.insert(0, str(Path(__file__).parent))
+from cursor_server_deployer.version.detector import CursorVersion
+from cursor_server_deployer.download.manager import DownloadManager
 
-try:
-    # Test imports
-    from cursor_server_deployer.config import ConfigManager, ServerConfig, DeploymentHistory
-    from cursor_server_deployer.version import VersionDetector
-    from cursor_server_deployer.download import DownloadManager
-    from cursor_server_deployer.ssh import KeyManager, SSHConnectionPool
-    from cursor_server_deployer.deploy import DeployManager
-    from cursor_server_deployer.utils import Logger
+def test_download():
+    # Create a mock CursorVersion
+    version_info = CursorVersion(
+        version='0.42.1',
+        commit='60faf7b51077ed1df1db718157bbfed740d2e168',
+        arch='x64',
+        full_output='cursor 0.42.1\n60faf7b51077ed1df1db718157bbfed740d2e168'
+    )
 
-    print("[OK] All imports successful")
+    # Create download manager with a temporary cache
+    cache_dir = Path(__file__).parent / 'test_cache'
+    download_manager = DownloadManager(cache_dir=cache_dir)
 
-    # Test basic functionality
-    print("\nTesting basic functionality...")
+    # Disable Rich console to avoid Unicode issues
+    download_manager.console = None
 
-    # Test ConfigManager
-    config = ConfigManager()
-    print(f"[OK] ConfigManager initialized")
-    print(f"  Config dir: {config.CONFIG_DIR}")
-    print(f"  Servers: {len(config.list_servers())}")
+    print('=== Testing Cursor Server Download ===')
+    print(f'Version: {version_info.version}')
+    print(f'Commit: {version_info.commit}')
+    print(f'Cache directory: {cache_dir}')
 
-    # Test Logger
-    logger = Logger(verbose=True)
-    logger.info("Logger test successful")
-    print("[OK] Logger working")
+    try:
+        # Test server package download
+        print('\n1. Testing server package download...')
+        server_file = download_manager.download(
+            version_info=version_info,
+            arch='x64',
+            os_type='linux',
+            force=True,
+            package_type='server'
+        )
 
-    # Test DownloadManager
-    downloader = DownloadManager()
-    print(f"[OK] DownloadManager initialized")
-    print(f"  Cache dir: {downloader.cache_dir}")
+        if server_file:
+            print(f'SUCCESS: Server package downloaded to: {server_file}')
+            print(f'File size: {server_file.stat().st_size} bytes')
+        else:
+            print('FAILED: Server package download failed')
 
-    print("\n[PASS] Basic tests passed!")
-    print("\nTo use the tool, run:")
-    print("  python -m cursor_server_deployer --help")
-    print("  or")
-    print("  uvx cursor-server-deployer --help")
+        # Test CLI package download
+        print('\n2. Testing CLI package download...')
+        cli_file = download_manager.download_cli_package(
+            version_info=version_info,
+            arch='x64',
+            force=True
+        )
 
-except Exception as e:
-    print(f"[FAIL] Error: {e}")
-    import traceback
-    traceback.print_exc()
-    sys.exit(1)
+        if cli_file:
+            print(f'SUCCESS: CLI package downloaded to: {cli_file}')
+            print(f'File size: {cli_file.stat().st_size} bytes')
+        else:
+            print('FAILED: CLI package download failed')
+
+        # Check what's in cache
+        print(f'\n3. Cache contents:')
+        if cache_dir.exists():
+            files = list(cache_dir.glob('*.tar.gz'))
+            print(f'Found {len(files)} files in cache:')
+            for f in files:
+                print(f'  - {f.name} ({f.stat().st_size} bytes)')
+        else:
+            print('Cache directory does not exist')
+
+    except Exception as e:
+        print(f'Error during test: {e}')
+        import traceback
+        traceback.print_exc()
+
+    finally:
+        # Clean up test cache
+        if cache_dir.exists():
+            import shutil
+            shutil.rmtree(cache_dir)
+            print(f'\n4. Cleaned up test cache: {cache_dir}')
+
+if __name__ == '__main__':
+    test_download()

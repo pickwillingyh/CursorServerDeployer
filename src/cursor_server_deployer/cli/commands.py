@@ -68,9 +68,9 @@ def deploy(
     silent: bool = typer.Option(False, "--silent", help="Silent mode (no prompts, uses last config)"),
     interactive: bool = typer.Option(False, "--interactive", "-i", help="Interactive server selection"),
     force_download: bool = typer.Option(False, "--force-download", "-f", help="Force re-download"),
-):
+  ):
     """
-    Deploy Cursor server to remote server(s)
+    Deploy Cursor server and CLI package to remote server(s)
     """
     config = ConfigManager()
 
@@ -146,44 +146,68 @@ def deploy(
         logger.error(f"Failed to detect Cursor version: {e}")
         raise typer.Exit(1)
 
-    # Download Cursor server
-    try:
-        logger.section("Downloading Cursor server")
-        downloader = DownloadManager()
+    # Download Cursor server and CLI package
+    logger.section("Downloading packages")
+    downloader = DownloadManager()
 
-        # Check cache for each architecture
-        download_needed = True
-        local_file = None
+    # Check cache for each architecture
+    download_server_needed = True
+    download_cli_needed = True
+    local_server_file = None
+    local_cli_file = None
 
-        if not force_download:
-            logger.debug("Checking cache for each server architecture:")
-            for server in servers_to_deploy:
-                arch = server.arch
-                cached = downloader.get_cached_file(version_info, arch)
-                if cached:
-                    local_file = cached
-                    logger.info(f"Using cached file for {arch}: {cached.name}")
-                    logger.debug(f"Cache found at: {cached}")
-                    logger.debug(f"Cache directory: {cached.parent}")
-                    logger.debug(f"Cache file exists: {cached.exists()}")
-                    download_needed = False  # 重置为 False
-                    break
-                else:
-                    logger.debug(f"No cached file found for {arch}")
+    if not force_download:
+      logger.debug("Checking cache for each server architecture:")
+      for server in servers_to_deploy:
+        arch = server.arch
+        # Check server package
+        cached = downloader.get_cached_file(version_info, arch, package_type="server")
+        if cached:
+          local_server_file = cached
+          logger.info(f"Using cached server package for {arch}: {cached.name}")
+          logger.debug(f"Cache found at: {cached}")
+          logger.debug(f"Cache directory: {cached.parent}")
+          logger.debug(f"Cache file exists: {cached.exists()}")
+          download_server_needed = False
 
-            if not local_file:
-                logger.debug("No cached file found for any architecture, will download")
-                logger.debug(f"Cache directory: {downloader.cache_dir}")
-                logger.debug(f"Cache directory exists: {downloader.cache_dir.exists()}")
+        # Check CLI package
+        cli_cached = downloader.get_cached_file(version_info, arch, package_type="cli")
+        if cli_cached:
+          local_cli_file = cli_cached
+          logger.info(f"Using cached CLI package for {arch}: {cli_cached.name}")
+          download_cli_needed = False
 
-        if download_needed:
-            # Use first server's architecture (or x64 as default)
-            target_arch = servers_to_deploy[0].arch
-            local_file = downloader.download(version_info, target_arch, force=force_download)
+        if not download_server_needed and not download_cli_needed:
+          break
 
-    except Exception as e:
-        logger.error(f"Failed to download Cursor server: {e}")
-        raise typer.Exit(1)
+      if not local_server_file:
+        logger.debug("No cached server package found for any architecture, will download")
+        logger.debug(f"Cache directory: {downloader.cache_dir}")
+        logger.debug(f"Cache directory exists: {downloader.cache_dir.exists()}")
+
+    # Download server package if needed
+    if download_server_needed or force_download:
+      target_arch = servers_to_deploy[0].arch
+      local_server_file = downloader.download(version_info, target_arch, force=force_download, package_type="server")
+      if local_server_file:
+        logger.success("Server package downloaded")
+      else:
+        logger.error("Server package download failed")
+        logger.warning("Will proceed without server package")
+
+    # Download CLI package if needed
+    if download_cli_needed or force_download:
+      target_arch = servers_to_deploy[0].arch
+      local_cli_file = downloader.download_cli_package(version_info, target_arch, force=force_download)
+      if local_cli_file:
+        logger.success("CLI package downloaded")
+      else:
+        logger.warning("CLI package download failed")
+
+    # Check if we have at least one package to deploy
+    if not local_server_file and not local_cli_file:
+      logger.error("No packages were successfully downloaded")
+      raise typer.Exit(1)
 
     # Deploy to servers
     logger.section("Deploying to remote server(s)")
@@ -191,7 +215,7 @@ def deploy(
     if silent:
         # Silent mode - only key auth allowed
         deploy_manager = DeployManager()
-        success = deploy_manager.deploy_silent(servers_to_deploy, local_file, version_info)
+        success = deploy_manager.deploy_silent(servers_to_deploy, local_server_file, local_cli_file, version_info)
 
         if success:
             logger.success(f"Deployed to {len(servers_to_deploy)} server(s)")
@@ -203,7 +227,7 @@ def deploy(
 
     else:
         # Normal mode - may require passwords
-        deployed, failed = _deploy_with_prompts(servers_to_deploy, local_file, version_info, config)
+        deployed, failed = _deploy_with_prompts(servers_to_deploy, local_server_file, local_cli_file, version_info, config)
 
         # Summary
         logger.section("Deployment Summary")
@@ -595,7 +619,8 @@ def _select_servers_interactive(config: ConfigManager) -> List[ServerConfig]:
 
 def _deploy_with_prompts(
     servers: List[ServerConfig],
-    local_file,
+    local_server_file,
+    local_cli_file,
     version_info,
     config: ConfigManager
 ):
@@ -614,7 +639,7 @@ def _deploy_with_prompts(
                     f"Enter password for {server.connection_string}: "
                 )
 
-            if deploy_manager.deploy(server, local_file, version_info, password):
+            if deploy_manager.deploy(server, local_server_file, local_cli_file, version_info, password):
                 deployed.append(server)
             else:
                 failed.append((server, "Deployment failed"))
