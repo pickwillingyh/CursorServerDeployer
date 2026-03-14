@@ -1,6 +1,6 @@
-"""
+'''
 SSH connection management
-"""
+'''
 
 import getpass
 from pathlib import Path
@@ -13,19 +13,19 @@ from cursor_server_deployer.config.models import ServerConfig
 
 
 class SSHConnectionPool:
-    """
+    '''
     Manages SSH connections to remote servers
 
     IMPORTANT: Passwords are NOT cached. Each connection requires
     password input unless SSH key authentication is configured.
-    """
+    '''
 
     def __init__(self):
         self.console = Console()
         self.connections = {}
 
     def get_connection(self, server_config: ServerConfig) -> paramiko.SSHClient:
-        """
+        '''
         Get SSH connection to server
 
         Args:
@@ -33,7 +33,7 @@ class SSHConnectionPool:
 
         Returns:
             Connected SSH client
-        """
+        '''
         cache_key = server_config.unique_key
 
         # Check if we already have a connection
@@ -46,7 +46,7 @@ class SSHConnectionPool:
                 del self.connections[cache_key]
 
         # Create new connection
-        if server_config.auth_method == "key":
+        if server_config.auth_method == 'key':
             connection = self._connect_with_key(server_config)
         else:
             # Password auth - always ask for password (no caching)
@@ -61,7 +61,7 @@ class SSHConnectionPool:
         server_config: ServerConfig,
         password: str
     ) -> paramiko.SSHClient:
-        """Connect using password authentication"""
+        '''Connect using password authentication'''
         try:
             client = paramiko.SSHClient()
             client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -74,35 +74,35 @@ class SSHConnectionPool:
             )
 
             self.console.print(
-                f"[green]✓[/green] Connected to {server_config.connection_string}"
+                f'[green]OK[/green] Connected to {server_config.connection_string}'
             )
             return client
 
         except paramiko.AuthenticationException:
             self.console.print(
-                f"[red]✗[/red] Authentication failed for {server_config.connection_string}"
+                f'[red]ERROR[/red] Authentication failed for {server_config.connection_string}'
             )
             raise RuntimeError(
-                f"Authentication failed for {server_config.connection_string}"
+                f'Authentication failed for {server_config.connection_string}'
             )
         except Exception as e:
             self.console.print(
-                f"[red]✗[/red] Connection failed to {server_config.connection_string}: {e}"
+                f'[red]ERROR[/red] Connection failed to {server_config.connection_string}: {e}'
             )
             raise RuntimeError(
-                f"Failed to connect to {server_config.connection_string}: {e}"
+                f'Failed to connect to {server_config.connection_string}: {e}'
             )
 
     def _connect_with_key(self, server_config: ServerConfig) -> paramiko.SSHClient:
-        """Connect using SSH key authentication"""
+        '''Connect using SSH key authentication'''
         try:
             # Load private key
             if not server_config.key_path:
-                raise RuntimeError("No key path configured")
+                raise RuntimeError('No key path configured')
 
             key_path = Path(server_config.key_path).expanduser()
             if not key_path.exists():
-                raise RuntimeError(f"Key file not found: {key_path}")
+                raise RuntimeError(f'Key file not found: {key_path}')
 
             private_key = paramiko.Ed25519Key.from_private_key_file(str(key_path))
 
@@ -118,31 +118,31 @@ class SSHConnectionPool:
             )
 
             self.console.print(
-                f"[green]✓[/green] Connected to {server_config.connection_string} (SSH key)"
+                f'[green]OK[/green] Connected to {server_config.connection_string} (SSH key)'
             )
             return client
 
         except Exception as e:
             self.console.print(
-                f"[red]✗[/red] SSH key connection failed for {server_config.connection_string}: {e}"
+                f'[red]ERROR[/red] SSH key connection failed for {server_config.connection_string}: {e}'
             )
             raise RuntimeError(
-                f"Failed to connect with SSH key to {server_config.connection_string}: {e}"
+                f'Failed to connect with SSH key to {server_config.connection_string}: {e}'
             )
 
     def _get_password(self, server_config: ServerConfig) -> str:
-        """
+        '''
         Get password for server
 
         IMPORTANT: This asks for password every time. No caching.
         Password is unique per host+port+user combination.
-        """
+        '''
         return getpass.getpass(
-            f"Enter password for {server_config.connection_string}: "
+            f'Enter password for {server_config.connection_string}: '
         )
 
     def _is_connection_alive(self, client: paramiko.SSHClient) -> bool:
-        """Test if SSH connection is still alive"""
+        '''Test if SSH connection is still alive'''
         try:
             transport = client.get_transport()
             if transport and transport.is_active():
@@ -153,7 +153,7 @@ class SSHConnectionPool:
             return False
 
     def close_all(self):
-        """Close all active connections"""
+        '''Close all active connections'''
         for cache_key, client in self.connections.items():
             try:
                 client.close()
@@ -162,7 +162,7 @@ class SSHConnectionPool:
         self.connections.clear()
 
     def close_connection(self, server_config: ServerConfig):
-        """Close connection to specific server"""
+        '''Close connection to specific server'''
         cache_key = server_config.unique_key
         if cache_key in self.connections:
             try:
