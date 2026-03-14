@@ -62,7 +62,7 @@ class DeployManager:
                     remote_server_path = f'{remote_base_path}/cli/servers/default/'
 
                 self.console.print('[yellow]→[/yellow] Creating remote directory structure...')
-                client.exec_command(f'mkdir -p '{remote_server_path}'')
+                client.exec_command(f"mkdir -p '{remote_server_path}'")
 
                 # 2. Upload server file
                 remote_tar_path = f'{remote_base_path}/cursor-server.tar.gz'
@@ -75,7 +75,7 @@ class DeployManager:
                 # 3. Extract server file
                 self.console.print('[yellow]→[/yellow] Extracting server files...')
                 stdin, stdout, stderr = client.exec_command(
-                    f'tar -xzf '{remote_tar_path}' -C '{remote_server_path}' --strip-components=1'
+                    f"tar -xzf '{remote_tar_path}' -C '{remote_server_path}' --strip-components=1"
                 )
 
             # Check for errors
@@ -85,7 +85,7 @@ class DeployManager:
 
             # 4. Cleanup server temporary file
             self.console.print('[yellow]→[/yellow] Cleaning up server package...')
-            client.exec_command(f'rm '{remote_tar_path}'')
+            client.exec_command(f"rm '{remote_tar_path}'")
 
             # 5. Upload CLI file if provided
             if local_cli_file:
@@ -99,7 +99,7 @@ class DeployManager:
                 # 6. Extract CLI file
                 self.console.print('[yellow]→[/yellow] Extracting CLI files...')
                 stdin, stdout, stderr = client.exec_command(
-                    f'tar -xzf '{remote_cli_tar_path}' -C '{remote_base_path}/cli/' --strip-components=1'
+                    f"tar -xzf '{remote_cli_tar_path}' -C '{remote_base_path}/cli/' --strip-components=1"
                 )
 
                 # Check for errors
@@ -109,7 +109,7 @@ class DeployManager:
 
                 # 7. Cleanup CLI temporary file
                 self.console.print('[yellow]→[/yellow] Cleaning up CLI package...')
-                client.exec_command(f'rm '{remote_cli_tar_path}'')
+                client.exec_command(f"rm '{remote_cli_tar_path}'")
 
             # Report what was deployed
             self.console.print(f'[green]OK[/green] Successfully deployed to {server.name}')
@@ -242,7 +242,7 @@ class DeployManager:
 
             # Check version file
             remote_path = f'{server.remote_path}/cli/servers/'
-            stdin, stdout, stderr = client.exec_command(f'ls -d '{remote_path}'* 2>/dev/null')
+            stdin, stdout, stderr = client.exec_command(f"ls -d '{remote_path}'* 2>/dev/null")
 
             output = stdout.read().decode().strip()
             if not output:

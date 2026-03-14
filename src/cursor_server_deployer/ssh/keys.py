@@ -177,7 +177,7 @@ class KeyManager:
             # Add public key to authorized_keys
             public_key_str = f'{public_key.get_name()} {public_key.get_base64()}'
             client.exec_command(
-                f'echo '{public_key_str}' >> ~/.ssh/authorized_keys && '
+                f"echo '{public_key_str}' >> ~/.ssh/authorized_keys && "
                 f'chmod 600 ~/.ssh/authorized_keys'
             )
 
@@ -258,7 +258,7 @@ Host {alias}
             )
 
             # Test with simple command
-            stdin, stdout, stderr = client.exec_command('echo 'connection test'')
+            stdin, stdout, stderr = client.exec_command("echo 'connection test'")
             output = stdout.read().decode().strip()
             client.close()
 
@@ -305,7 +305,7 @@ Host {alias}
 
             # Remove key from authorized_keys
             client.exec_command(
-                f'sed -i '/{public_key_str.split()[1]}/d' ~/.ssh/authorized_keys'
+                f"sed -i \"/{public_key_str.split()[1]}/d\" ~/.ssh/authorized_keys"
             )
 
             client.close()

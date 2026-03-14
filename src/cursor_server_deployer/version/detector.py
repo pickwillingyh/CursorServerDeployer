@@ -38,7 +38,7 @@ class VersionDetector:
 
         # Try 'cursor --version' first (if in PATH)
         try:
-            logger.debug('Trying to run 'cursor --version' from PATH')
+            logger.debug("Trying to run 'cursor --version' from PATH")
             result = subprocess.run(
                 ['cursor', '--version'],
                 capture_output=True,
@@ -140,7 +140,7 @@ class VersionDetector:
                     import os
                     if os.environ.get('CURSOR_SERVER_DEPLOYER_NO_CURSOR_CLI') == '1':
                         raise RuntimeError('Cursor CLI invocation disabled by environment variable')
-                logger.debug(f'Running system cursor command: {' '.join(kwargs['args'])}')
+                logger.debug(f"Running system cursor command: {' '.join(kwargs['args'])}")
                 result = subprocess.run(**kwargs)
             else:
                 # Use full path - handle .cmd files on Windows

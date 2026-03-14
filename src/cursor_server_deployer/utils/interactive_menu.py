@@ -42,7 +42,7 @@ class InteractiveMenu:
         # Fallback to simple typer prompts
         self.console.print(f'\n[bold]{message}[/bold]')
         for i, choice in enumerate(choices, 1):
-            self.console.print(f'  {i}. {choice['name']}')
+            self.console.print(f"  {i}. {choice['name']}")
 
         try:
             answer = input(f'\n{instruction}\n> ')
@@ -93,7 +93,7 @@ class InteractiveMenu:
         # Fallback to simple selection
         self.console.print(f'\n[bold]{message}[/bold]')
         for i, choice in enumerate(choices, 1):
-            self.console.print(f'  {i}. {choice['name']}')
+            self.console.print(f"  {i}. {choice['name']}")
 
         try:
             answer = input(f'\n{instruction}\n> ')

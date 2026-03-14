@@ -386,7 +386,7 @@ def history(
         status = '[green]OK[/green]' if exec_record.success else '[red]ERROR[/red]'
         logger.info(f'{status} {exec_record.timestamp}')
         logger.info(f'    Action: {exec_record.action}')
-        logger.info(f'    Servers: {', '.join(exec_record.servers)}')
+        logger.info(f'    Servers: {", ".join(exec_record.servers)}')
         if exec_record.cursor_version:
             logger.info(f'    Version: {exec_record.cursor_version}')
         logger.blank()
@@ -521,40 +521,40 @@ def _select_servers_interactive(config: ConfigManager) -> List[ServerConfig]:
         primary_choices = []
         for server in servers:
             key_status = "(key)" if server.key_setup else "(password)"
-            label = f”{server.name} - {server.connection_string} {key_status}”
-            primary_choices.append({“name”: label, “value”: (“single”, server)})
+            label = f"{server.name} - {server.connection_string} {key_status}"
+            primary_choices.append({"name": label, "value": ("single", server)})
 
         # Extra menu items
         extra_choices = [
-            {“name”: “[+] New server...”, “value”: (“action”, “new”)},
-            {“name”: “[*] All servers”, “value”: (“action”, “all”)},
+            {"name": "[+] New server...", "value": ("action", "new")},
+            {"name": "[*] All servers", "value": ("action", "all")},
         ]
 
-        # 如果有上一次执行记录，则增加”直接应用上一次选择”的选项
+        # 如果有上一次执行记录，则增加"直接应用上一次选择"的选项
         last_execution = config.get_last_execution()
         if last_execution and last_execution.servers:
             extra_choices.insert(
                 1,
                 {
-                    “name”: “[⟳] Use last selected servers”,
-                    “value”: (“action”, “last”),
+                    "name": "[⟳] Use last selected servers",
+                    "value": ("action", "last"),
                 },
             )
 
         # 进入多选模式的入口，具体空格说明放在下一步的多选界面里
         extra_choices.extend(
             [
-                {“name”: “Multi-select servers...”, “value”: (“action”, “multi”)},
-                {“name”: “[x] Quit”, “value”: (“action”, “quit”)},
+                {"name": "Multi-select servers...", "value": ("action", "multi")},
+                {"name": "[x] Quit", "value": ("action", "quit")},
             ]
         )
 
         primary_choices.extend(extra_choices)
 
         result = interactive_menu.select_single(
-            “Select server(s) to deploy:”,
+            "Select server(s) to deploy:",
             primary_choices,
-            “Use ↑/↓ to move, Enter to confirm, Esc to cancel”
+            "Use ↑/↓ to move, Enter to confirm, Esc to cancel"
         )
 
         if result is None:
