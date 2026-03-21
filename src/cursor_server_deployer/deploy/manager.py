@@ -2,6 +2,7 @@
 Deployment manager for Cursor server
 '''
 
+import getpass
 import os
 from pathlib import Path
 from typing import List, Tuple, Optional
@@ -57,7 +58,7 @@ class DeployManager:
                 # 1. Create remote directory structure
                 remote_base_path = server.remote_path
                 if version_info:
-                    remote_server_path = f'{remote_base_path}/cli/servers/Stable-{version_info.commit}/server/'
+                    remote_server_path = f'{remote_base_path}/cli/servers/Stable-{version_info.commit}/'
                 else:
                     remote_server_path = f'{remote_base_path}/cli/servers/default/'
 
@@ -78,17 +79,27 @@ class DeployManager:
                     f"tar -xzf '{remote_tar_path}' -C '{remote_server_path}' --strip-components=1"
                 )
 
-            # Check for errors
-            error = stderr.read().decode()
-            if error:
-                raise RuntimeError(f'Server extraction failed: {error}')
+                # Check for errors
+                error = stderr.read().decode()
+                if error:
+                    raise RuntimeError(f'Server extraction failed: {error}')
 
-            # 4. Cleanup server temporary file
-            self.console.print('[yellow]→[/yellow] Cleaning up server package...')
-            client.exec_command(f"rm '{remote_tar_path}'")
+                # 4. Cleanup server temporary file
+                self.console.print('[yellow]→[/yellow] Cleaning up server package...')
+                client.exec_command(f"rm '{remote_tar_path}'")
 
             # 5. Upload CLI file if provided
             if local_cli_file:
+                # Ensure we have a connection if not already established
+                if not local_server_file:
+                    if server.auth_method == 'key':
+                        client = self.connection_pool.get_connection(server)
+                    else:
+                        if not password:
+                            raise RuntimeError('Password required for password authentication')
+                        client = self._connect_with_password(server, password)
+                    remote_base_path = server.remote_path
+
                 remote_cli_tar_path = f'{remote_base_path}/cursor-cli.tar.gz'
                 self.console.print(f'[yellow]→[/yellow] Uploading CLI package to {remote_cli_tar_path}...')
 
@@ -158,7 +169,7 @@ class DeployManager:
                         f'[{server.name}] Enter password for {server.connection_string}: '
                     )
 
-                if self.deploy(server, local_file, version_info, password):
+                if self.deploy(server, local_file, None, version_info, password):
                     deployed_servers.append(server)
                 else:
                     failed_servers.append((server, 'Deployment failed'))
@@ -198,8 +209,6 @@ class DeployManager:
             if server.auth_method == 'password':
                 # 即使在 silent 模式下，也允许通过一次性密码输入完成部署，
                 # 只是打印更少的日志。
-                import getpass
-
                 password = getpass.getpass(
                     f'[silent] Enter password for {server.connection_string}: '
                 )

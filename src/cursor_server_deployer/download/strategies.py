@@ -94,9 +94,9 @@ class DefaultStrategy(DownloadStrategy):
         )
 
     def get_filename(self, version_info: CursorVersion, arch: str, os_type: str = 'linux') -> str:
-        '''Get filename for the downloaded file'''
-        # Use the actual filename from downloads.cursor.com
-        return f'cursor-reh-{os_type}-{arch}.tar.gz'
+        '''Get filename for the downloaded file (includes version for caching)'''
+        # Include commit hash in filename to prevent cache collisions
+        return f'cursor-reh-{os_type}-{arch}-{version_info.commit[:8]}.tar.gz'
 
     def get_cli_download_url(self, version_info: CursorVersion, arch: str, os_type: str = 'linux') -> str:
         '''
@@ -113,57 +113,50 @@ class DefaultStrategy(DownloadStrategy):
         )
 
     def get_cli_filename(self, version_info: CursorVersion, arch: str, os_type: str = 'linux') -> str:
-        '''Get filename for the CLI package'''
-        # Use the actual filename from downloads.cursor.com
-        return f'cli-{os_type}-{arch}.tar.gz'
+        '''Get filename for the CLI package (includes version for caching)'''
+        # Include commit hash in filename to prevent cache collisions
+        return f'cli-{os_type}-{arch}-{version_info.commit[:8]}.tar.gz'
 
 
 class AzureStrategy(DownloadStrategy):
     '''
-    Azure blob storage strategy for Cursor versions
-    Uses Azure blob storage for older versions
+    Azure blob storage strategy for Cursor versions (fallback for older versions)
+    Uses Azure blob storage as fallback when downloads.cursor.com fails
     '''
 
     BASE_URL = 'https://cursor.blob.core.windows.net/remote-releases'
 
     def get_download_url(self, version_info: CursorVersion, arch: str, os_type: str = 'linux') -> str:
         '''
-        Get download URL for Cursor server from downloads.cursor.com
-        Use a known working commit hash
+        Get download URL for Cursor server
+        Uses the actual commit from version_info
         '''
-        working_commit = '60faf7b51077ed1df1db718157bbfed740d2e168'
-        return f'https://downloads.cursor.com/production/{working_commit}/{os_type}/{arch}/cursor-reh-{os_type}-{arch}.tar.gz'
+        return (
+            f'https://downloads.cursor.com/production/'
+            f'{version_info.commit}/'
+            f'{os_type}/{arch}/'
+            f'cursor-reh-{os_type}-{arch}.tar.gz'
+        )
 
     def get_filename(self, version_info: CursorVersion, arch: str, os_type: str = 'linux') -> str:
-        '''Get filename for the downloaded file from Azure'''
-        return f'cursor-reh-{os_type}-{arch}.tar.gz'
+        '''Get filename for the downloaded file (includes version for caching)'''
+        return f'cursor-reh-{os_type}-{arch}-{version_info.commit[:8]}.tar.gz'
 
     def get_cli_download_url(self, version_info: CursorVersion, arch: str, os_type: str = 'linux') -> str:
         '''
-        Get download URL for CLI package from Azure
+        Get download URL for CLI package
+        Uses the actual commit from version_info
         '''
-        # Azure uses different filenames for CLI packages
-        # Some versions use alpine-x64, others use linux-x64
-        azure_commit = '61e99179e4080fecf9d8b92c6e2e3e00fbfb53f0'
-        if os_type == 'linux':
-            return (
-                f'{self.BASE_URL}/'
-                f'{azure_commit}/'
-                f'cli-alpine-{arch}.tar.gz'
-            )
-        else:
-            return (
-                f'{self.BASE_URL}/'
-                f'{azure_commit}/'
-                f'cli-{os_type}-{arch}.tar.gz'
-            )
+        return (
+            f'https://downloads.cursor.com/production/'
+            f'{version_info.commit}/'
+            f'{os_type}/{arch}/'
+            f'cli-{os_type}-{arch}.tar.gz'
+        )
 
     def get_cli_filename(self, version_info: CursorVersion, arch: str, os_type: str = 'linux') -> str:
-        '''Get filename for the CLI package from Azure'''
-        if os_type == 'linux':
-            return f'cli-alpine-{arch}.tar.gz'
-        else:
-            return f'cli-{os_type}-{arch}.tar.gz'
+        '''Get filename for the CLI package (includes version for caching)'''
+        return f'cli-{os_type}-{arch}-{version_info.commit[:8]}.tar.gz'
 
 
 class StrategyFactory:
@@ -177,7 +170,7 @@ class StrategyFactory:
             version: Cursor version string
 
         Returns:
-            Appropriate download strategy
+            Appropriate download strategy (DefaultStrategy for all versions)
         '''
-        # For now, try Azure first since it's known to work
-        return AzureStrategy()
+        # Use DefaultStrategy which uses the actual commit from version_info
+        return DefaultStrategy()
