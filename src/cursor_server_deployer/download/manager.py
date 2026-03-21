@@ -128,7 +128,7 @@ class DownloadManager:
                 return local_path
             else:
                 if self.console:
-                    self.console.print(f'[yellow]→[/yellow] Cached file is empty, redownloading...[/dim]')
+                    self.console.print('[yellow]→[/yellow] Cached file is empty, redownloading...')
                 return self._download_file_with_fallback(url, temp_path, local_path, package_type, version_info)
         else:
             if self.console:

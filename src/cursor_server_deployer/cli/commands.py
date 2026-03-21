@@ -151,62 +151,52 @@ def deploy(
     logger.section('Downloading packages')
     downloader = DownloadManager()
 
-    # Check cache for each architecture
-    download_server_needed = True
-    download_cli_needed = True
-    local_server_file = None
-    local_cli_file = None
-
-    if not force_download:
-      logger.debug('Checking cache for each server architecture:')
-      for server in servers_to_deploy:
-        arch = server.arch
-        # Check server package
-        cached = downloader.get_cached_file(version_info, arch, package_type='server')
-        if cached:
-          local_server_file = cached
-          logger.info(f'Using cached server package for {arch}: {cached.name}')
-          logger.debug(f'Cache found at: {cached}')
-          logger.debug(f'Cache directory: {cached.parent}')
-          logger.debug(f'Cache file exists: {cached.exists()}')
-          download_server_needed = False
-
-        # Check CLI package
-        cli_cached = downloader.get_cached_file(version_info, arch, package_type='cli')
-        if cli_cached:
-          local_cli_file = cli_cached
-          logger.info(f'Using cached CLI package for {arch}: {cli_cached.name}')
-          download_cli_needed = False
-
-        if not download_server_needed and not download_cli_needed:
-          break
-
-      if not local_server_file:
-        logger.debug('No cached server package found for any architecture, will download')
-        logger.debug(f'Cache directory: {downloader.cache_dir}')
-        logger.debug(f'Cache directory exists: {downloader.cache_dir.exists()}')
-
-    # Download server package if needed
-    if download_server_needed or force_download:
-      target_arch = servers_to_deploy[0].arch
-      local_server_file = downloader.download(version_info, target_arch, force=force_download, package_type='server')
-      if local_server_file:
-        logger.success('Server package downloaded')
-      else:
-        logger.error('Server package download failed')
-        logger.warning('Will proceed without server package')
-
-    # Download CLI package if needed
-    if download_cli_needed or force_download:
-      target_arch = servers_to_deploy[0].arch
-      local_cli_file = downloader.download_cli_package(version_info, target_arch, force=force_download)
-      if local_cli_file:
-        logger.success('CLI package downloaded')
-      else:
-        logger.warning('CLI package download failed')
+    # Collect unique architectures needed
+    archs_needed = set(server.arch for server in servers_to_deploy)
+    
+    # Download packages for each architecture
+    local_server_files = {}  # arch -> Path
+    local_cli_files = {}     # arch -> Path
+    
+    for arch in archs_needed:
+        server_file = None
+        cli_file = None
+        
+        # Check cache first
+        if not force_download:
+            cached_server = downloader.get_cached_file(version_info, arch, package_type='server')
+            if cached_server:
+                server_file = cached_server
+                logger.info(f'Using cached server package for {arch}: {cached_server.name}')
+            
+            cached_cli = downloader.get_cached_file(version_info, arch, package_type='cli')
+            if cached_cli:
+                cli_file = cached_cli
+                logger.info(f'Using cached CLI package for {arch}: {cached_cli.name}')
+        
+        # Download server package if needed
+        if not server_file or force_download:
+            server_file = downloader.download(version_info, arch, force=force_download, package_type='server')
+            if server_file:
+                logger.success(f'Server package downloaded for {arch}')
+            else:
+                logger.warning(f'Server package download failed for {arch}')
+        
+        # Download CLI package if needed
+        if not cli_file or force_download:
+            cli_file = downloader.download_cli_package(version_info, arch, force=force_download)
+            if cli_file:
+                logger.success(f'CLI package downloaded for {arch}')
+            else:
+                logger.warning(f'CLI package download failed for {arch}')
+        
+        if server_file:
+            local_server_files[arch] = server_file
+        if cli_file:
+            local_cli_files[arch] = cli_file
 
     # Check if we have at least one package to deploy
-    if not local_server_file and not local_cli_file:
+    if not local_server_files and not local_cli_files:
       logger.error('No packages were successfully downloaded')
       raise typer.Exit(1)
 
@@ -216,19 +206,43 @@ def deploy(
     if silent:
         # Silent mode - only key auth allowed
         deploy_manager = DeployManager()
-        success = deploy_manager.deploy_silent(servers_to_deploy, local_server_file, local_cli_file, version_info)
+        all_success = True
+        deployed_servers = []
+        
+        for server in servers_to_deploy:
+            server_file = local_server_files.get(server.arch)
+            cli_file = local_cli_files.get(server.arch)
+            
+            if not server_file and not cli_file:
+                logger.warning(f'No packages available for {server.name} (arch: {server.arch})')
+                all_success = False
+                continue
+            
+            success = deploy_manager.deploy(
+                server, server_file, cli_file, version_info, password=None
+            )
+            if success:
+                deployed_servers.append(server)
+            else:
+                all_success = False
 
-        if success:
-            logger.success(f'Deployed to {len(servers_to_deploy)} server(s)')
-            _record_execution(config, servers_to_deploy, version_info, True)
+        if all_success:
+            logger.success(f'Deployed to {len(deployed_servers)} server(s)')
+            _record_execution(config, deployed_servers, version_info, True)
         else:
             logger.error('Some deployments failed')
-            _record_execution(config, servers_to_deploy, version_info, False)
+            _record_execution(config, deployed_servers, version_info, False)
             raise typer.Exit(1)
 
     else:
         # Normal mode - may require passwords
-        deployed, failed = _deploy_with_prompts(servers_to_deploy, local_server_file, local_cli_file, version_info, config)
+        deployed, failed = _deploy_with_prompts(
+            servers_to_deploy, 
+            local_server_files, 
+            local_cli_files, 
+            version_info, 
+            config
+        )
 
         # Summary
         logger.section('Deployment Summary')
@@ -629,8 +643,8 @@ def _select_servers_interactive(config: ConfigManager) -> List[ServerConfig]:
 
 def _deploy_with_prompts(
     servers: List[ServerConfig],
-    local_server_file,
-    local_cli_file,
+    local_server_files: dict,
+    local_cli_files: dict,
     version_info,
     config: ConfigManager
 ):
@@ -641,6 +655,14 @@ def _deploy_with_prompts(
 
     for server in servers:
         try:
+            # Get the correct files for this server's architecture
+            server_file = local_server_files.get(server.arch)
+            cli_file = local_cli_files.get(server.arch)
+            
+            if not server_file and not cli_file:
+                failed.append((server, f'No packages available for architecture {server.arch}'))
+                continue
+
             # Get password if needed
             password = None
             if server.auth_method == 'password':
@@ -649,7 +671,7 @@ def _deploy_with_prompts(
                     f'Enter password for {server.connection_string}: '
                 )
 
-            if deploy_manager.deploy(server, local_server_file, local_cli_file, version_info, password):
+            if deploy_manager.deploy(server, server_file, cli_file, version_info, password):
                 deployed.append(server)
             else:
                 failed.append((server, 'Deployment failed'))

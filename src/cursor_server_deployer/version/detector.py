@@ -120,7 +120,6 @@ class VersionDetector:
         '''
         # 1) 优先尝试调用 `cursor --version`（跨平台一致）
         try:
-            print('----')
             # Use cursor --version command
             if self.cursor_path == Path('cursor'):
                 # Use system command
