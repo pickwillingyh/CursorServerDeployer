@@ -48,30 +48,6 @@ Then you can run this tool from any directory without creating a virtualenv manu
 uvx cursor-server-deployer --help
 ```
 
-#### Short alias for frequent use
-
-To avoid typing the full command every time, you can define a short alias:
-
-- **Bash/Zsh**:
-
-  ```bash
-  # Put this in your ~/.bashrc or ~/.zshrc
-  alias csd='uvx cursor-server-deployer'
-  ```
-
-- **PowerShell** (Windows):
-
-  ```powershell
-  # Add this to your $PROFILE
-  function csd { uvx cursor-server-deployer @Args }
-  ```
-
-After that you can simply run:
-
-```bash
-csd --host mycloud.com --user root
-```
-
 ### Using pipx
 
 Install to your current environment:
@@ -86,7 +62,37 @@ pipx install cursor-server-deployer
 pip install cursor-server-deployer
 ```
 
+### Using uvx (Local Development)
+
+If you want to test the local version without installing it:
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/cursor-server-deployer.git
+cd cursor-server-deployer
+
+# Run directly with uvx from local source
+uvx --from . cursor-server-deployer --help
+
+# Or use --with-editable for development (changes reflect immediately)
+uvx --with-editable . --from . cursor-server-deployer --help
+
+# Run deployment
+uvx --with-editable . --from . cursor-server-deployer --host mycloud.com --user root
+
+# Run in interactive mode
+uvx --with-editable . --from . cursor-server-deployer
+
+# Add a server
+uvx --with-editable . --from . cursor-server-deployer add-server --host example.com --user admin
+
+# List servers
+uvx --with-editable . --from . cursor-server-deployer list-servers
+```
+
 ### Using uv (Development)
+
+To run from source code:
 
 ```bash
 # Clone the repository
@@ -98,6 +104,18 @@ uv sync
 
 # Run the tool
 uv run python -m cursor_server_deployer --help
+
+# Run deployment
+uv run python -m cursor_server_deployer --host mycloud.com --user root
+
+# Run in interactive mode
+uv run python -m cursor_server_deployer
+
+# Add a server
+uv run python -m cursor_server_deployer add-server --host example.com --user admin
+
+# List servers
+uv run python -m cursor_server_deployer list-servers
 ```
 
 ## Usage
